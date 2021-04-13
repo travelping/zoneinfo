@@ -1,7 +1,9 @@
 -module(zoneinfo).
 
+-behavior(gen_server).
+
 %% API
--export([load/1, add/2, find/3]).
+-export([start_link/0, load/1, add/2, find/3]).
 -export([debug_zoneinfo/1, dump_treeish/2, tz_to_ranges/2]).
 
 %% gen_server callbacks
@@ -9,6 +11,12 @@
 	 terminate/2, code_change/3]).
 
 -include("zoneinfo.hrl").
+
+%% API functions
+-ignore_xref([start_link/0, add/2, load/1, find/3]).
+
+%% debug functions
+-ignore_xref([debug_zoneinfo/1, dump_treeish/2, tz_to_ranges/2]).
 
 -define(SERVER, ?MODULE).
 
@@ -19,6 +27,9 @@
 %%%===================================================================
 %%% API
 %%%===================================================================
+
+start_link() ->
+    gen_server:start_link(?SERVER, ?MODULE, [], []).
 
 load(File) ->
     {ok, Data} = file:read_file(File),

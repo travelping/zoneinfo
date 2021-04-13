@@ -6,6 +6,16 @@
 
 -include("zoneinfo.hrl").
 
+%% API functions
+-ignore_xref([from_local_time/2, from_local_time/3,
+	      from_universal_time/2,
+	      to_local_time/1, to_local_time/2,
+	      to_universal_time/1,
+	      to_rfc3339/1,
+	      tz_name/1,
+	      tz_offset/1
+	     ]).
+
 %%%===================================================================
 %%% API
 %%%===================================================================

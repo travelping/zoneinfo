@@ -22,11 +22,14 @@ start_link() ->
 %% ===================================================================
 
 init([]) ->
+    SupFlags = #{strategy => one_for_all,
+		 intensity => 0,
+		 period => 1},
     ChildSpec =
-	#{id       => dhcp_pool,
+	#{id       => zoneinfo,
 	  start    => {zoneinfo, start_link, []},
 	  restart  => permanent,
 	  shutdown => 1000,
 	  type     => worker,
 	  modules  => [zoneinfo]},
-    {ok, {{one_for_one, 5, 10}, [ChildSpec]}}.
+    {ok, {SupFlags, [ChildSpec]}}.

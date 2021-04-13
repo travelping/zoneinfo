@@ -39,8 +39,12 @@ load(File) ->
     ZoneInfo = parse_header_v0(Data),
     treeish(ZoneInfo).
 
+find(_, utc, #zoneinfo{utc = undefined}) ->
+    [0];
 find(TT, utc, #zoneinfo{utc = Treeish}) ->
     find_tt(Treeish, TT, []);
+find(_, local, #zoneinfo{local = undefined}) ->
+    [0];
 find(TT, local, #zoneinfo{local = Treeish}) ->
     find_tt(Treeish, TT, []).
 
@@ -169,31 +173,23 @@ parse_header_v0(<<"TZif", Version:8, _:15/bytes,
       TTinfoBin:(TypeCnt * 6)/bytes,
       ZoneAbrevBin:CharCnt/bytes,
       LeapSecBin:(LeapCnt * 8)/bytes,
-      IsStdBin:TTisstdCnt/bytes,
-      IsUtBin:TTisutCnt/bytes,
+      _IsStdBin:TTisstdCnt/bytes,
+      _IsUtBin:TTisutCnt/bytes,
       Rest1/binary>> = Rest0,
 
     ZoneInfo =
 	#zoneinfo{
 	   tt = lists:zip([?SECONDS_FROM_0_TO_1970 + X || <<X:32/signed>> <= TTbin],
 			  binary_to_list(NextTTIdxBin)),
-       tt_info =
-	   maps:from_list(
-	     lists:zip(
-	       lists:seq(0, TypeCnt - 1),
-	       lists:zipwith3(
-		 fun({UtOff, IsDst, DesigIdx}, IsStd, IsUt) ->
-			 #ttinfo{
-			    ut_off = UtOff,
-			    is_dst = to_bool(IsDst),
-			    desig_idx = DesigIdx,
-			    is_std = to_bool(IsStd),
-			    is_ut = to_bool(IsUt)}
-		 end,
-		 [{UtOff, IsDst, DesigIdx} ||
-		     <<UtOff:32/signed, IsDst:8, DesigIdx:8>> <= TTinfoBin],
-		 binary_to_list(IsStdBin),
-		 binary_to_list(IsUtBin)))),
+	   tt_info =
+	       maps:from_list(
+		 lists:zip(
+		   lists:seq(0, TypeCnt - 1),
+		   [#ttinfo{
+		       ut_off = UtOff,
+		       is_dst = to_bool(IsDst),
+		       desig_idx = DesigIdx}
+		    || <<UtOff:32/signed, IsDst:8, DesigIdx:8>> <= TTinfoBin])),
 	   zone_abrev = parse_zone_abrev(0, ZoneAbrevBin, #{}),
 	   leap_sec = [{Trans, Corr} || <<Trans:32, Corr:32/signed>> <= LeapSecBin]
 	  },
@@ -210,8 +206,8 @@ parse_header_v2(<<"TZif", $2:8, _:15/bytes,
       TTinfoBin:(TypeCnt * 6)/bytes,
       ZoneAbrevBin:CharCnt/bytes,
       LeapSecBin:(LeapCnt * 12)/bytes,
-      IsStdBin:TTisstdCnt/bytes,
-      IsUtBin:TTisutCnt/bytes,
+      _IsStdBin:TTisstdCnt/bytes,
+      _IsUtBin:TTisutCnt/bytes,
       Rest1/binary>> = Rest0,
 
     %% io:format("Rest1: ~p~n", [Rest1]),
@@ -225,19 +221,11 @@ parse_header_v2(<<"TZif", $2:8, _:15/bytes,
 	   maps:from_list(
 	     lists:zip(
 	       lists:seq(0, TypeCnt - 1),
-	       lists:zipwith3(
-		 fun({UtOff, IsDst, DesigIdx}, IsStd, IsUt) ->
-			 #ttinfo{
-			    ut_off = UtOff,
-			    is_dst = to_bool(IsDst),
-			    desig_idx = DesigIdx,
-			    is_std = to_bool(IsStd),
-			    is_ut = to_bool(IsUt)}
-		 end,
-		 [{UtOff, IsDst, DesigIdx} ||
-		     <<UtOff:32/signed, IsDst:8, DesigIdx:8>> <= TTinfoBin],
-		 binary_to_list(IsStdBin),
-		 binary_to_list(IsUtBin)))),
+	       [#ttinfo{
+		   ut_off = UtOff,
+		   is_dst = to_bool(IsDst),
+		   desig_idx = DesigIdx}
+		|| <<UtOff:32/signed, IsDst:8, DesigIdx:8>> <= TTinfoBin])),
        zone_abrev = parse_zone_abrev(0, ZoneAbrevBin, #{}),
        leap_sec = [{Trans, Corr} || <<Trans:32, Corr:32/signed>> <= LeapSecBin],
        tz = TZ
@@ -326,12 +314,10 @@ to_bool(Int) -> Int > 0.
 
 fmt_tt_info(Design, ZoneInfo) ->
     #ttinfo{
-       ut_off = UtOff, is_dst = IsDst, desig_idx = DesigIdx,
-       is_std = IsStd, is_ut = IsUt} =
+       ut_off = UtOff, is_dst = IsDst, desig_idx = DesigIdx} =
 	maps:get(Design, ZoneInfo#zoneinfo.tt_info),
-    io_lib:format("~s, isdst=~p gmtoff=~p isstd=~p isut=~p",
-		  [maps:get(DesigIdx, ZoneInfo#zoneinfo.zone_abrev),
-		   IsDst, UtOff, IsStd, IsUt]).
+    io_lib:format("~s, isdst=~p gmtoff=~p",
+		  [maps:get(DesigIdx, ZoneInfo#zoneinfo.zone_abrev), IsDst, UtOff]).
 
 parse_zone_abrev(_, <<>>, ZoneAbrev) ->
     ZoneAbrev;
@@ -352,6 +338,8 @@ adjust_local(Info, TT) ->
 	      {Start + Off, End + Off, Design}
       end, TT).
 
+ranges([]) ->
+    [];
 ranges([H|T]) ->
     ranges(H, T, []).
 

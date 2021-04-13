@@ -1,0 +1,2 @@
+-record(ttinfo, {ut_off, is_dst, desig_idx}).
+-record(zoneinfo, {tt, tt_info, zone_abrev, leap_sec, tz, utc, local}).

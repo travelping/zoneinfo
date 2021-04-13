@@ -1,14 +1,19 @@
 -module(localtime).
 
--export([from_local_time/3, from_universal_time/2,
-	 to_local_time/1, to_local_time/2, to_universal_time/1, to_rfc3339/1]).
--export([tz_offset/1, tz_name/1]).
+-export([from_local_time/1, from_local_time/2, from_local_time/3,
+	 from_universal_time/1, from_universal_time/2,
+	 to_local_time/1, to_local_time/2,
+	 to_universal_time/1,
+	 to_rfc3339/1,
+	 tz_offset/1,
+	 tz_name/1
+	]).
 
 -include("zoneinfo.hrl").
 
 %% API functions
--ignore_xref([from_local_time/2, from_local_time/3,
-	      from_universal_time/2,
+-ignore_xref([from_local_time/1, from_local_time/2, from_local_time/3,
+	      from_universal_time/1, from_universal_time/2,
 	      to_local_time/1, to_local_time/2,
 	      to_universal_time/1,
 	      to_rfc3339/1,
@@ -20,6 +25,10 @@
 %%% API
 %%%===================================================================
 
+from_local_time(DateTime) ->
+    Zone = os:getenv("TZ", "localtime"),
+    from_local_time(DateTime, Zone).
+
 from_local_time(DateTime, ZoneInfo) ->
     from_local_time(DateTime, undefined, ZoneInfo).
 
@@ -29,6 +38,9 @@ from_local_time(DateTime, TZ, ZoneInfo)
 from_local_time(DateTime, TZ, Name) ->
     {ok, ZoneInfo} = zoneinfo:get(Name),
     from_local_time_(DateTime, TZ, ZoneInfo).
+
+from_universal_time(DateTime) ->
+    from_universal_time(DateTime, "Etc/UTC").
 
 from_universal_time(DateTime, ZoneInfo)
   when is_record(ZoneInfo, zoneinfo) ->

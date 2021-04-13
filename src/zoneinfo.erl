@@ -2,14 +2,17 @@
 
 -behavior(gen_server).
 
+-compile({no_auto_import,[get/1]}).
+
 %% API
--export([start_link/0, load/1, add/2, find/3]).
+-export([start_link/0, load/1, add/2, get/1, find/3]).
 -export([debug_zoneinfo/1, dump_treeish/2, tz_to_ranges/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
+-include_lib("kernel/include/file.hrl").
 -include("zoneinfo.hrl").
 
 %% API functions
@@ -29,7 +32,7 @@
 %%%===================================================================
 
 start_link() ->
-    gen_server:start_link(?SERVER, ?MODULE, [], []).
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 load(File) ->
     {ok, Data} = file:read_file(File),
@@ -67,18 +70,39 @@ print_tt({Start, End, Design, _, _}, ZoneInfo) ->
 
 add(Name, File) ->
     ZoneInfo = load(File),
-    gen_server:call(?SERVER, {add, Name, ZoneInfo}).
+    gen_server:call(?SERVER, {add, to_binary(Name), ZoneInfo}).
+
+get(Name) when is_list(Name) ->
+    get(list_to_binary(Name));
+get(Name) when is_binary(Name) ->
+    case ets:lookup(?MODULE, Name) of
+	[{_, {alias, Alias}}] ->
+	    get(Alias);
+	[{_, ZoneInfo}] when is_record(ZoneInfo, zoneinfo) ->
+	    {ok, ZoneInfo};
+	_ ->
+	    gen_server:call(?SERVER, {get, Name})
+    end.
 
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
 
 init([]) ->
-    ets:new(?MODULE, [ordered_set, private, {keypos, 1}]),
-    {ok, #{}}.
+    Path =
+	case application:get_env(zoneinfo) of
+	    {ok, V} -> to_binary(V);
+	    _ -> undefined
+	end,
+    ets:new(?MODULE, [named_table, public, ordered_set, {keypos, 1}]),
+    {ok, #{path => Path}}.
 
 handle_call({add, Name, ZoneInfo}, _From, State) ->
-    Result = ets:insert(?MODULE, {Name, ZoneInfo}),
+    Result = ets:insert(?MODULE, {to_binary(Name), ZoneInfo}),
+    {reply, Result, State};
+
+handle_call({get, Name}, _From, #{path := Path} = State) ->
+    Result = try_get(Path, Name),
     {reply, Result, State}.
 
 handle_cast(_Request, State) ->
@@ -96,6 +120,46 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+to_binary(List) when is_list(List) ->
+    list_to_binary(List);
+to_binary(Bin) when is_binary(Bin) ->
+    Bin.
+
+try_get(BasePath, Name) ->
+    case ets:lookup(?MODULE, Name) of
+	[{_, ZoneInfo}]  when is_record(ZoneInfo, zoneinfo) ->
+	    {ok, ZoneInfo};
+	[{_, {alias, Alias}}] ->
+	    try_get(BasePath, Alias);
+	_ ->
+	    try_load(BasePath, Name)
+    end.
+
+try_load(BasePath, Name) ->
+    File = to_binary(filename:absname_join(BasePath, Name)),
+    case file:read_file_info(File) of
+	{ok, #file_info{type = symlink}} ->
+	    case file:read_link(File) of
+		{ok, Target} ->
+		    case filename:pathtype(Target) of
+			relative ->
+			    ets:insert(?MODULE, {to_binary(Name), {alias, to_binary(Target)}});
+			_ ->
+			    ok
+		    end,
+		    %% alias might already be loaded...
+		    try_get(BasePath, Target);
+		_ ->
+		    {error, not_found}
+	    end;
+	{ok, #file_info{type = regular}} ->
+	    ZoneInfo = load(File),
+	    ets:insert(?MODULE, {to_binary(Name), ZoneInfo}),
+	    {ok, ZoneInfo};
+	_ ->
+	    {error, not_found}
+    end.
 
 parse_header_v0(<<"TZif", Version:8, _:15/bytes,
 	       TTisutCnt:32, TTisstdCnt:32, LeapCnt:32,
@@ -150,9 +214,9 @@ parse_header_v2(<<"TZif", $2:8, _:15/bytes,
       IsUtBin:TTisutCnt/bytes,
       Rest1/binary>> = Rest0,
 
-    io:format("Rest1: ~p~n", [Rest1]),
-    {TZ, Rest2} = parse_tz(Rest1),
-    io:format("TZ: ~p~nRest2: ~p~n", [TZ, Rest2]),
+    %% io:format("Rest1: ~p~n", [Rest1]),
+    {TZ, _Rest} = parse_tz(Rest1),
+    %% io:format("TZ: ~p~nRest2: ~p~n", [TZ, _Rest]),
 
     #zoneinfo{
        tt = lists:zip([?SECONDS_FROM_0_TO_1970 + X || <<X:64/signed>> <= TTbin],

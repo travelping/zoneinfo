@@ -6,9 +6,9 @@
    [kernel,
     stdlib
    ]},
-  {env,[]},
+  {env,[{zoneinfo, "/usr/share/zoneinfo"}]},
   {mod, {zoneinfo_app, []}},
-  {modules, []},
+  {modules, [zoneinfo, localtime]},
 
   {licenses, ["Apache 2.0"]},
   {links, []}

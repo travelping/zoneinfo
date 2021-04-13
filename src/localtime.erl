@@ -83,16 +83,11 @@ from_local_time_(DateTime, TZ, ZoneInfo) ->
     Times0 =
 	lists:map(fun(Design) -> mk_local_time(Design, Secs, ZoneInfo) end,
 		  zoneinfo:find(Secs, local, ZoneInfo)),
-    Times = case TZ of
-		 undefined ->
-		     Times0;
-		 _ ->
-		     lists:filter(fun({_, _, Name}) -> Name == TZ end, Times0)
-	     end,
-    case Times of
-	[]     -> false;
-	[Time] -> Time;
-	List   -> List
+    case TZ of
+	undefined ->
+	    Times0;
+	_ ->
+	    lists:filter(fun({_, _, Name}) -> Name == TZ end, Times0)
     end.
 
 mk_local_time(Design, Secs, #zoneinfo{tt_info = Info, zone_abrev = Abrev}) ->
